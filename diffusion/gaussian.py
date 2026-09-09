@@ -17,6 +17,14 @@ def _extract(coefficients, t, ndim):
     return out.reshape(t.shape[0], *([1] * (ndim - 1)))
 
 
+def make_timestep_subsequence(T, steps):
+    """在 [0, T-1] 上均匀取 steps 个时间步（含端点），返回降序列表（用于 DDIM 少步采样）。"""
+    if steps > T:
+        raise ValueError(f"sample_steps({steps}) 不能超过总扩散步数 T({T})")
+    seq = torch.linspace(0, T - 1, steps).round().long().tolist()
+    return seq[::-1]
+
+
 class GaussianDiffusion(nn.Module):
     """DDPM 高斯扩散。系数在 __init__ 中预计算为 buffer，随 .to(device) 一起迁移。"""
 
@@ -41,12 +49,14 @@ class GaussianDiffusion(nn.Module):
         return sqrt_ab * x0 + sqrt_1_ab * noise
 
     @torch.no_grad()
-    def p_sample(self, model, x, t_index, prev_t_index):
-        """反向单步：由 x_t 采样 x_prev。
+    def p_sample(self, model, x, t_index, prev_t_index, eta=1.0):
+        """DDIM 反向单步：由 x_t 计算 x_prev（公式见 README "少步采样与 DDIM" 一节）。
 
-        使用广义后验 q(x_prev | x_t, x0)：prev_t_index = t_index - 1 时
-        严格退化为 README 推导的 ancestral sampling（均值/方差公式一致）；
-        传入跳跃的 prev_t_index 即可支持少步采样（扩展内容预留）。
+        x_prev = sqrt(ᾱ_prev) * x0_pred + sqrt(1-ᾱ_prev-σ²) * ε_θ + σ z
+        σ = eta * sqrt((1-ᾱ_prev)/(1-ᾱ_t)) * sqrt(1-ᾱ_t/ᾱ_prev)
+
+        eta=1 时与广义后验（DDPM ancestral sampling）系数代数等价；
+        eta=0 时为确定性 DDIM。prev_t_index 可跳跃（子序列少步采样）。
         """
         t = torch.full((x.shape[0],), t_index, device=x.device, dtype=torch.long)
         alpha_bar_t = _extract(self.alpha_bar, t, x.ndim)
@@ -59,30 +69,28 @@ class GaussianDiffusion(nn.Module):
         # 由预测噪声反解 x0：x0 = (x_t - sqrt(1-alpha_bar_t) * eps) / sqrt(alpha_bar_t)
         pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * pred_noise) / torch.sqrt(alpha_bar_t)
 
-        # 后验均值系数与方差（与 README boxed 公式代数等价）
-        beta_gen = 1 - alpha_bar_t / alpha_bar_prev
-        coef_x0 = torch.sqrt(alpha_bar_prev) * beta_gen / (1 - alpha_bar_t)
-        coef_x = torch.sqrt(alpha_bar_t / alpha_bar_prev) * (1 - alpha_bar_prev) / (1 - alpha_bar_t)
-        mean = coef_x0 * pred_x0 + coef_x * x
-        variance = ((1 - alpha_bar_prev) / (1 - alpha_bar_t) * beta_gen).clamp(min=0.0)
+        sigma = eta * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar_t)) \
+            * torch.sqrt(1 - alpha_bar_t / alpha_bar_prev)
+        direction = torch.sqrt((1 - alpha_bar_prev - sigma ** 2).clamp(min=0.0)) * pred_noise
+        x_prev = torch.sqrt(alpha_bar_prev) * pred_x0 + direction
 
         noise = torch.randn_like(x) if prev_t_index >= 0 else torch.zeros_like(x)   # 最后一步不加噪声
-        return mean + torch.sqrt(variance) * noise
+        return x_prev + sigma * noise
 
     @torch.no_grad()
-    def sample_loop(self, model, shape, device, timesteps=None, log_interval=100):
+    def sample_loop(self, model, shape, device, sample_steps=None, eta=1.0, log_interval=100):
         """完整采样：从纯噪声 x_T 逐步去噪到 x_0，输出 clamp 到 [-1,1]。
 
-        timesteps 默认是完整的 T-1 ... 0；传入降序子序列即可少步采样（扩展预留）。
+        sample_steps 默认等于 T（走满全部时间步）；传入更小的步数时在 [0,T-1] 上
+        均匀取子序列跳步采样（DDIM，见 README 对应小节）。eta 控制随机性。
         """
         model.eval()
-        if timesteps is None:
-            timesteps = list(range(self.T - 1, -1, -1))
+        timesteps = make_timestep_subsequence(self.T, sample_steps or self.T)
         x = torch.randn(shape, device=device)
         start_time = time.perf_counter()
         for i, t_index in enumerate(timesteps):
             prev_t_index = timesteps[i + 1] if i + 1 < len(timesteps) else -1
-            x = self.p_sample(model, x, t_index, prev_t_index)
+            x = self.p_sample(model, x, t_index, prev_t_index, eta=eta)
             if log_interval and (i + 1) % log_interval == 0:
                 elapsed = time.perf_counter() - start_time
                 print(f"  sampling {i + 1}/{len(timesteps)} | elapsed {elapsed:.1f}s", flush=True)

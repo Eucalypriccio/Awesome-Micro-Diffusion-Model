@@ -58,6 +58,16 @@ def run_check(config: Config):
     assert set(ema.state_dict().keys()) == set(model.state_dict().keys())
     print("  EMA update [OK]")
 
+    # DDIM 路径：跳步单步 + 少步完整采样（eta=0 确定性），形状与数值合法性
+    x_ddim = diffusion.p_sample(model, x_t, t_index=5, prev_t_index=2, eta=0.0)
+    assert x_ddim.shape == x0.shape, "DDIM 单步输出形状不一致"
+    x_few = diffusion.sample_loop(
+        model, (2, config.in_channels, config.image_size, config.image_size),
+        device, sample_steps=10, eta=0.0, log_interval=0)
+    assert x_few.shape == (2, config.in_channels, config.image_size, config.image_size)
+    assert torch.isfinite(x_few).all(), "DDIM 少步采样出现 NaN/Inf"
+    print("  DDIM (eta=0, 10 steps) [OK]")
+
     # ---------- 4. 单 batch 过拟合 ----------
     print("\n[check 4/4] 单 batch 过拟合测试 (200 steps) ...")
     set_seed(config.seed)

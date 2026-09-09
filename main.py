@@ -1,6 +1,7 @@
 """CLI 入口：
     python main.py train --schedule linear --epochs 20     # 训练
     python main.py sample --ckpt checkpoints/unet_final.pt # 生成 8x8 网格
+    python main.py sample --sample-steps 1000 100 50 --eta 0  # DDIM 少步采样对比
     python main.py check                                   # 自检
 """
 import argparse
@@ -28,6 +29,10 @@ def parse_args():
     sample_parser.add_argument("--ckpt", default="./checkpoints/unet_final.pt")
     sample_parser.add_argument("--num-samples", type=int, default=64)
     sample_parser.add_argument("--out", default=None, help="输出图片路径")
+    sample_parser.add_argument("--sample-steps", type=int, nargs="+", default=None, metavar="S",
+                               help="反向采样步数，可传多个做质量-耗时对比（默认走满训练时的 T）")
+    sample_parser.add_argument("--eta", type=float, default=1.0,
+                               help="DDIM 随机性：0=确定性（少步时质量更好），1=DDPM 后验")
 
     subparsers.add_parser("check", help="自检：参数量/调度/形状/单batch过拟合")
     return parser.parse_args()
@@ -57,7 +62,8 @@ def main():
         train(build_config(args), resume_path=args.resume)
     elif args.command == "sample":
         from engine.sample import sample
-        sample(build_config(args), args.ckpt, args.num_samples, args.out)
+        sample(build_config(args), args.ckpt, args.num_samples, args.out,
+               args.sample_steps, args.eta)
     elif args.command == "check":
         from engine.check import run_check
         run_check(Config())

@@ -145,7 +145,7 @@ $t=1$ 时 $z=0$（不加噪声）。采样从 $x_T\sim\mathcal N(0,I)$ 开始，
 
 ### 3.5 最终采样输出（实验要求）
 
-训练结束后：从 $\mathcal N(0,I)$ 采 64 张纯噪声 → ancestral sampling 完整 T 步 → clamp(-1,1) → (x+1)/2 → `torchvision.utils.make_grid` 拼成 **8×8 网格**保存为 `outputs/samples_final.png`，同时打印采样总耗时与平均每步耗时（为扩展实验的耗时对比留好计时代码）。
+训练结束后：从 $\mathcal N(0,I)$ 采 64 张纯噪声 → ancestral sampling 完整 T 步 → clamp(-1,1) → (x+1)/2 → `torchvision.utils.make_grid` 拼成 **8×8 网格**保存为 `outputs/samples_step_{步数}_eta_{η}.png`，同时打印采样总耗时与平均每步耗时。扩展一已实现：`--sample-steps` 可传多个步数逐一出图，并打印耗时汇总表（相同初始噪声，公平对比）。
 
 ---
 
@@ -224,5 +224,5 @@ Awesome-Micro-Diffusion-Model/
 
 ## 6. 扩展预留（本期不实现，设计时留好接口）
 
-1. **不同采样步数对比**：`sample_loop` 接受 `timesteps` 子序列参数（如从 1000 步均匀抽 50 步），后验公式中的 $\bar\alpha_{t-1}$ 换成子序列上一项的 $\bar\alpha$ 即可（即广义后验 / DDIM η=1 形式）；对比生成质量与耗时——计时代码在 §3.5 已埋好。
+1. **不同采样步数对比（已实现）**：采用 DDIM 统一形式（η 参数化；可证明 η=1 与最初的广义后验实现系数代数等价，η=0 为确定性采样）。`python main.py sample --sample-steps 1000 200 50 20 --eta 0` 逐一出图并打印耗时汇总；理论已写入 README "少步采样与 DDIM" 一节。
 2. **指定数字生成（条件扩散）**：`nn.Embedding(10, time_dim)` 把数字标签嵌入与 time_emb 相加后注入各残差块；训练时标签取自 DataLoader，采样时终端输入 0-9 指定生成类别。模型 forward 预留可选 `labels` 参数位。

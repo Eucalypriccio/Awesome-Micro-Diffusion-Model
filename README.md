@@ -23,9 +23,9 @@ python main.py sample --ckpt checkpoints\unet_final.pt
 	- 每张图片大小 28x28x1
 - 支持 CPU/GPU（`torch.cuda.is_available()` 自动检测）
 - 支持线性调度和余弦调度
-- 扩展内容（后续完成）
-	- 不同采样步数对生成质量与耗时的影响
-	- 完成指定数字采样（即支持文字 embedding），比如在终端输入数字 0-9，生成对应的图像
+- 扩展内容
+	- 不同采样步数对生成质量与耗时的影响（已实现：DDIM 子序列采样，见"少步采样与 DDIM"一节；`python main.py sample --sample-steps 1000 200 50 20 --eta 0`）
+	- 完成指定数字采样（即支持文字 embedding），比如在终端输入数字 0-9，生成对应的图像——原理见"指定数字生成（条件扩散与 Classifier-Free Guidance）"一节
 
 要求：
 - 控制模型大小，CPU 训练小时不超过 2h
@@ -112,6 +112,58 @@ $$\boxed{x_{t-1} = \frac{1}{\sqrt{\alpha_t}} \left(x_t - \frac{\beta_t}{\sqrt{1-
 > [!note] 协方差与 Pearson 相关系数
 > $\text{Cov}(X,Y) = \mathbb{E}[(X-\mathbb{E}[X])(Y - \mathbb{E}[Y])] = \mathbb{E}[XY] - \mathbb{E}[X]\mathbb{E}[Y]$
 > $\rho = \text{Cov}(\frac{X-\mathbb{E}[X]}{\sqrt{\mathbb{D}[X]}},\frac{Y-\mathbb{E}[Y]}{\sqrt{\mathbb{D}[Y]}})=\frac{\text{Cov}(X,Y)}{\sqrt{\mathbb{D}[X]}\sqrt{\mathbb{D}[Y]}}$
+
+### 少步采样与 DDIM
+
+ancestral sampling 必须严格走满全部 $T$ 步（相邻时间步之间的后验转移），推理耗时与 $T$ 成正比。希望在**不重训**的前提下，只用 $S\ll T$ 步完成采样。
+
+**关键观察：训练目标只约束边缘分布**
+
+回顾训练过程：损失只涉及一步加噪的边缘分布 $q(x_t|x_0)=\mathcal{N}(x_0\sqrt{\bar{\alpha}_t},1-\bar{\alpha}_t)$，从未涉及相邻时间步之间的联合分布。这意味着，只要保持边缘分布不变，时间步之间的转移规则可以重新设计——包括"跳步"。DDIM（Denoising Diffusion Implicit Models）正是利用这一点，构造了一族与 DDPM 边缘分布相同、但非马尔可夫的前向过程，其反向过程可以在时间步子序列上定义。
+
+**DDIM 反向更新**
+
+取降序子序列 $\tau=\{\tau_1,\tau_2,...,\tau_S\}\subseteq\{0,1,...,T-1\}$（实现中在 $[0,T-1]$ 上均匀取 $S$ 个点，含端点），$\bar{\alpha}$ 仍查训练时的原调度表。
+
+目标是构造一步从 $\tau_i$ 到 $\tau_{i-1}$ 的转移。手中可用的材料只有：网络预测的噪声 $\epsilon_\theta(x_{\tau_i},\tau_i)$（可反解出 $\hat{x}_0$）、原调度表、以及新鲜随机噪声 $z\sim\mathcal{N}(0,1)$。
+
+仿照一步加噪公式 $x_t = x_0\sqrt{\bar{\alpha}_t} + \epsilon\sqrt{1-\bar{\alpha}_t}$ 的结构（原图方向 + 噪声方向），设这一步的更新形如：
+
+$$x_{\tau_{i-1}} = \hat{x}_0\sqrt{\bar{\alpha}_{\tau_{i-1}}} + c\cdot\epsilon_\theta(x_{\tau_i},\tau_i) + \sigma_i z,\qquad \hat{x}_0 = \frac{x_{\tau_i} - \sqrt{1-\bar{\alpha}_{\tau_i}}\,\epsilon_\theta}{\sqrt{\bar{\alpha}_{\tau_i}}}$$
+
+其中 $c$、$\sigma_i$ 是待定系数：$\sigma_i$ 是本步**新注入随机噪声的强度**，$c$ 是噪声方向的系数。
+
+**确定系数：边缘分布约束**
+
+如果网络预测准确（$\epsilon_\theta \approx \epsilon$），更新后的 $x_{\tau_{i-1}}$ 就应该落在 $\tau_{i-1}$ 水平的边缘分布上，即每个像素的方差必须为 $1-\bar{\alpha}_{\tau_{i-1}}$。
+
+$\epsilon_\theta$ 由 $x_{\tau_i}$ 决定（确定量），$z$ 是新采的（与 $\epsilon_\theta$ 相互独立），由正态分布的性质 2，噪声部分的方差为 $c^2+\sigma_i^2$。于是：
+
+$$c^2+\sigma_i^2 = 1-\bar{\alpha}_{\tau_{i-1}} \quad\Rightarrow\quad c = \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}$$
+
+也就是说：**一旦选定 $\sigma_i$，噪声方向系数 $c$ 就被边缘分布唯一确定；而 $\sigma_i$ 本身是自由的**——取 $[0,\sqrt{1-\bar{\alpha}_{\tau_{i-1}}}]$ 中的任意值，边缘分布都成立。这正对应上面的观察：训练只约束边缘分布，所以合法的反向转移规则不唯一，而是有"一族"，$\sigma_i$ 就是这一族规则的参数。
+
+**如何选择 $\sigma_i$**
+
+一个自然的基准是 DDPM：让 $\sigma_i$ 等于广义后验 $q(x_{\tau_{i-1}}|x_{\tau_i},x_0)$ 的标准差（把上一节后验方差公式中的相邻步换成子序列上的 $\tau_i,\tau_{i-1}$）：
+
+$$\sigma_i^{DDPM} = \sqrt{\tilde{\beta}} = \sqrt{\frac{1-\bar{\alpha}_{\tau_{i-1}}}{1-\bar{\alpha}_{\tau_i}}}\sqrt{1-\frac{\bar{\alpha}_{\tau_i}}{\bar{\alpha}_{\tau_{i-1}}}}$$
+
+再引入系数 $\eta\in[0,1]$，在它与 $0$ 之间插值，即 $\sigma_i = \eta\,\sigma_i^{DDPM}$。代回更新式，得到 DDIM 反向更新公式：
+
+$$\boxed{x_{\tau_{i-1}} = \sqrt{\bar{\alpha}_{\tau_{i-1}}}\,\hat{x}_0 + \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}\;\epsilon_\theta(x_{\tau_i},\tau_i) + \sigma_i z}$$
+
+- $\eta=1$：整式就是 DDPM 的 ancestral sampling（均值、方差都与广义后验一致；子序列取完整序列时即上一节 boxed 公式）
+- $\eta=0$：$\sigma_i=0$，无新噪声注入，整个过程**完全确定**——相同的初始噪声 $x_T$ 必然生成相同的图，这也是 "implicit" 一词的由来
+
+直观理解：每一步反向，目标水平的噪声总量 $1-\bar{\alpha}_{\tau_{i-1}}$ 是一块"预算"，被切成两部分——模型已经解释掉的部分（$\sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}\cdot\epsilon_\theta$）和重新随机化的部分（$\sigma_i z$）。$\eta=0$ 表示完全信任模型给出的方向；$\eta$ 越大，每步"重新掷骰子"的成分越多。
+
+**为什么少步时倾向 $\eta=0$**
+
+步数 $S$ 越小，子序列相邻时间步之间的噪声级差越大，$\hat{x}_0$ 的预测误差被放大得越多；$\eta=1$ 每步还要额外注入一份新噪声，误差进一步累积，少步时样本明显模糊。$\eta=0$ 消除了这一扰动来源，低步数（如 20~50 步）下质量显著更好；$S$ 接近 $T$ 时两者差别不大。
+
+> [!note] 术语澄清
+> 一步到位的闭式加噪属于 DDPM 的前向边缘分布，与 DDIM 无关；DDIM 特指上述（可确定性的）反向采样方法。训练代码完全不需要改动——DDIM 与 DDPM 使用同一个训练好的 $\epsilon_\theta$。
 
 ### U-Net
 $SiLU(x) = x \cdot \frac{1}{1+e^{-x}}$
@@ -207,6 +259,79 @@ $$O = [O_1,O_2,...,O_8]$$
 再通过一个可学习的输出权重 $W_O$ 进行融合得到最终输出：
 $$O_{bottleneck} = O \cdot W_O$$
 
+### EMA 权重指数滑动平均
+
+训练中，参数 $\theta$ 的每一步更新都带有 batch 抽样带来的随机性，参数轨迹是一条抖动的曲线。最后时刻的参数只是这条轨迹上一个随机的"快照"——恰好停在哪，带点运气成分；而轨迹上最近一段位置的平均，往往落在损失曲面更平坦、更靠近盆地中心的地方，生成质量更稳定。
+
+EMA（Exponential Moving Average，指数滑动平均）为此维护一份**影子参数** $\theta_{ema}$，训练的每一步之后做一次插值：
+
+$$\boxed{\theta_{ema} \leftarrow \rho\,\theta_{ema} + (1-\rho)\,\theta}$$
+
+$\rho$ 是衰减系数（本项目取 $\rho=0.999$）。影子参数**不参与梯度下降**，只是被动地跟踪 $\theta$。
+
+如何理解这个公式？
+把递推逐步展开，$\theta_{ema}$ 实际上是参数历史轨迹的指数加权平均：越近的参数权重越大，越早的按 $\rho$ 的几何级数衰减，有效窗口约为 $\frac{1}{1-\rho}$ 步。$\rho=0.999$ 对应窗口约 1000 步（约 2 个 epoch），窗口内的高频抖动被平均掉——相当于对参数轨迹做低通滤波，输出一条平滑的轨迹。
+
+使用方式：
+- 训练：照常反向传播更新 $\theta$，每步结束后按上式更新一次 $\theta_{ema}$（一次向量插值，CPU 上耗时不到 1ms）
+- 采样：把 $\theta_{ema}$ 载入模型（本项目 checkpoint 同时保存两套权重，采样时优先加载 EMA 权重）
+
+> [!note] $\rho$ 与训练长度的关系
+> 有效窗口 $\frac{1}{1-\rho}$ 应明显小于总训练步数，否则影子参数还停留在初始化附近，"平均"失去意义。本项目训练约 $20\times469\approx 10^4$ 步，$\rho=0.999$（窗口 $10^3$ 步）是合适的折中；DDPM 原文训练几十万步，使用 $\rho=0.9999$。
+
+### 指定数字生成（条件扩散与 Classifier-Free Guidance）
+
+至此训练的模型是**无条件**的：从纯噪声出发，生成哪个数字全凭运气。希望像给画家下订单一样，指定生成数字 $y\in\{0,1,...,9\}$。
+
+**条件注入：把标签变成向量**
+
+和时间步 $t$ 一样，数字标签 $y$ 也要先变成向量才能送进网络。最简单的方式是一张可学习的查找表（embedding table）：10 个数字各对应一个 $d$ 维向量，向量值随训练自动学习：
+
+$$\vec{emb}_y = \text{EmbeddingTable}[y] \in \mathbb{R}^d$$
+
+取与时间嵌入相同的维度 $d$，直接相加，然后沿用原来的注入通路（每个残差块的专属 MLP 生成 $\gamma,\beta$）：
+
+$$\vec{emb} = \vec{emb}_t + \vec{emb}_y$$
+
+模型从 $\epsilon_\theta(x_t,t)$ 变为 $\epsilon_\theta(x_t,t,y)$；前向加噪、损失函数（MSE）、反向采样公式**全部不变**——条件只是网络额外接收的一份信息。
+
+**Classifier-Free Guidance（无分类器引导）**
+
+只注入条件，模型对条件的服从往往不够"坚决"（生成的数字有时看起来并不像指定的那个）。希望有一个旋钮，能在采样时调节条件的强度。
+
+从贝叶斯公式出发：$p(y|x) \propto p(x|y)\,/\,p(x)$，两边取对数再对 $x_t$ 求梯度（score）：
+
+$$\nabla_{x_t}\log p(x_t|y) = \nabla_{x_t}\log p(x_t) + \nabla_{x_t}\log p(y|x_t)$$
+
+即：条件分布的 score = 无条件分布的 score + 一个"分类器"指出的方向。人为给分类器方向加一个权重 $w$（guidance scale）：
+
+$$\nabla_{x_t}\log p_w(x_t|y) = \nabla_{x_t}\log p(x_t) + w\,\nabla_{x_t}\log p(y|x_t)$$
+
+$w=1$ 时就是正常的条件采样；$w>1$ 时沿着"更像数字 $y$"的方向走得更远。
+
+问题：上式需要额外训练一个分类器 $p(y|x_t)$。**classifier-free 的关键技巧**：不用单独训练分类器——由贝叶斯分解，$\nabla\log p(y|x_t) = \nabla\log p(x_t|y) - \nabla\log p(x_t)$，等号右边两项恰好是**同一个去噪网络在有/无条件下的两种输出**！让网络同时学会这两种模式：训练时以一定概率（如 10%）把真实标签替换成一个特殊的"空标签" $\varnothing$，于是同一个网络既能给出 $\epsilon_\theta(x_t,t,y)$，也能给出 $\epsilon_\theta(x_t,t,\varnothing)$。
+
+代入贝叶斯分解：
+
+$$\nabla_{x_t}\log p_w(x_t|y) = \nabla_{x_t}\log p(x_t) + w\left[\nabla_{x_t}\log p(x_t|y) - \nabla_{x_t}\log p(x_t)\right]$$
+
+而噪声预测与 score 只相差一个负系数：$\epsilon_\theta(x_t,t,\cdot) \approx -\sqrt{1-\bar{\alpha}_t}\,\nabla_{x_t}\log p(x_t|\cdot)$（score 指向数据分布的高密度方向，噪声指向其反方向）。代入并把负系数提出，得到采样时每步实际使用的引导噪声预测：
+
+$$\boxed{\hat{\epsilon} = \epsilon_\theta(x_t,t,\varnothing) + w\left[\epsilon_\theta(x_t,t,y) - \epsilon_\theta(x_t,t,\varnothing)\right]}$$
+
+读法：无条件预测 + $w$ × 条件相对无条件的"修正方向"。
+
+- $w=1$：$\hat{\epsilon}=\epsilon_\theta(x_t,t,y)$，退化为普通条件采样
+- $w>1$：条件强度加大，指定数字的特征更鲜明；过大（如 >10）会导致画面失真、对比度异常
+- $w=0$：$\hat{\epsilon}=\epsilon_\theta(x_t,t,\varnothing)$，退化为无条件采样
+
+实现上，每个采样步需要条件、无条件**两次前向传播**（或把两份输入拼成一个 batch 一次前向）。得到 $\hat{\epsilon}$ 后，DDPM / DDIM 的采样公式照常使用（把公式中的 $\epsilon_\theta$ 换成 $\hat{\epsilon}$ 即可）。
+
+> [!note] 空标签 $\varnothing$ 的实现
+> embedding 表多开一行（共 11 行），用索引 10 固定表示 $\varnothing$；训练时每张图以概率 $p_{drop}=0.1$ 把标签换成 $\varnothing$。因此同一份网络权重同时学到条件与无条件两种预测模式。
+
+**对训练流程的改动**（承接前面的 9 步，改动极小）：第 1 步取 batch 时同时取出标签 $y$；以 10% 概率把标签替换为 $\varnothing$；第 5 步前向传播多传入标签 embedding。其余步骤不变。
+
 ## 训练
 
 1. **输入**：取一张图 $x_0$（MNIST，形状 `[1, 28, 28]`，已归一化到 [-1, 1]）
@@ -217,3 +342,4 @@ $$O_{bottleneck} = O \cdot W_O$$
 6. **计算损失**：$L=MSE(\epsilon_\theta,\epsilon)$，得到一个标量数字
 7. **反向传播（有梯度）**：执行 `loss.backward()`，计算损失函数关于 U-Net 中每一个参数的梯度
 8. **更新参数**：优化器（如 Adam）拿着这些梯度，执行 `optimizer.step()`，微调 U-Net 里的参数（注意：每个 step 的反向传播之前要先 `optimizer.zero_grad()` 清空上一轮累积的梯度）
+9. **更新影子参数（EMA）**：执行 $\theta_{ema} \leftarrow 0.999\,\theta_{ema} + 0.001\,\theta$。影子参数不参与梯度，仅被动跟踪；采样时加载它（见"EMA 权重指数滑动平均"一节）
