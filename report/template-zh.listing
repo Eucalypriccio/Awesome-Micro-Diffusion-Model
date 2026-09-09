@@ -1,0 +1,2 @@
+python main.py sample --ckpt checkpoints/unet_final.pt --digit all --guidance-w 2.0
+python main.py sample --ckpt checkpoints/unet_final.pt --digit 7 --guidance-w 4.0

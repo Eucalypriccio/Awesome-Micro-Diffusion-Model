@@ -16,12 +16,17 @@ from models.time_embedding import TimeEmbedding
 class UNet(nn.Module):
     def __init__(self, in_channels=1, base_channels=24, channel_multipliers=(1, 2, 4),
                  num_res_blocks=1, time_dim=128, num_groups=8, num_heads=4,
-                 upsample_smooth=False):
+                 upsample_smooth=False, conditional=True, num_classes=10):
         super().__init__()
         channels = [base_channels * m for m in channel_multipliers]   # 如 [32, 64, 128]
         num_levels = len(channels)
 
         self.time_embedding = TimeEmbedding(time_dim)
+        # 数字标签 embedding：num_classes 个真实标签 + 索引 num_classes 表示空标签 ∅
+        self.conditional = conditional
+        self.num_classes = num_classes
+        if conditional:
+            self.label_embed = nn.Embedding(num_classes + 1, time_dim)
         self.init_conv = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1)
 
         # 编码器：第 i 层输出通道 channels[i]，跳跃连接保存每层降采样前的输出
@@ -59,9 +64,16 @@ class UNet(nn.Module):
 
         self.out_conv = nn.Conv2d(channels[0], in_channels, kernel_size=1)   # 1x1 卷积恢复通道数
 
-    def forward(self, x, t):
+    def forward(self, x, t, labels=None):
         time_emb = self.time_embedding(t)
-        h: Any = self.init_conv(x)
+        if self.conditional:
+            # 标签向量与时间向量同维相加，复用残差块的 γ/β 注入通路；
+            # labels 为 None 时按空标签 ∅ 处理（即无条件模式）
+            if labels is None:
+                labels = torch.full((x.shape[0],), self.num_classes,
+                                    device=x.device, dtype=torch.long)
+            time_emb = time_emb + self.label_embed(labels)
+        h = self.init_conv(x)
 
         skips = []
         for blocks, down in zip(self.encoder_blocks, self.downsamples):
@@ -94,4 +106,6 @@ def build_model(config):
         num_groups=config.num_groups,
         num_heads=config.num_heads,
         upsample_smooth=config.upsample_smooth,
+        conditional=config.conditional,
+        num_classes=config.num_classes,
     )

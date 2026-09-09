@@ -6,11 +6,31 @@
 
 ```
 .venv\Scripts\activate
-python main.py check
-python main.py train --schedule linear --epochs 20
-python main.py train --resume                # 断点续训（默认接 checkpoints\unet_latest.pt，可 --epochs 延长）
-python main.py sample --ckpt checkpoints\unet_final.pt
+
+python main.py check                                   # 自检（参数量/调度/形状/过拟合）
+
+python main.py train --schedule linear --epochs 20     # 训练（线性调度）
+python main.py train --schedule cosine --epochs 20     # 训练（余弦调度，本报告结果所用）
+python main.py train --resume --epochs 20              # 断点续训（默认接 checkpoints\unet_latest.pt，--epochs 延长目标轮数）
+
+python main.py sample --ckpt checkpoints\unet_final_0909.pt
+# 基础采样：64 张 8x8 网格（默认 1000 步 ancestral、EMA 权重）
+
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --sample-steps 1000 200 100 50 20 --eta 1
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --sample-steps 1000 200 100 50 20 --eta 0
+# 扩展一：不同采样步数对比（相同初始噪声，逐一出图并打印耗时汇总）
+
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit all --guidance-w 2.0
+# 扩展二：指定数字采样（0-9 各 8 张拼网格）
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit 8 --guidance-w 0
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit 8 --guidance-w 1
+python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit 8 --guidance-w 4
+# guidance 强度对比（w=0 退化为无条件采样）
+
+python benchmark.py                                    # 性能基准（FLOPs/耗时分析）
 ```
+
+注：`unet_final_0909.pt` 为条件模型（支持 `--digit`）；`unet_final.pt` 为更早的无条件模型存档，仅作对照。
 
 ## 实验
 - 前向加噪：噪声调度，一步到位的闭式加噪
@@ -25,7 +45,7 @@ python main.py sample --ckpt checkpoints\unet_final.pt
 - 支持线性调度和余弦调度
 - 扩展内容
 	- 不同采样步数对生成质量与耗时的影响（已实现：DDIM 子序列采样，见"少步采样与 DDIM"一节；`python main.py sample --sample-steps 1000 200 50 20 --eta 0`）
-	- 完成指定数字采样（即支持文字 embedding），比如在终端输入数字 0-9，生成对应的图像——原理见"指定数字生成（条件扩散与 Classifier-Free Guidance）"一节
+	- 完成指定数字采样（即支持文字 embedding），比如在终端输入数字 0-9，生成对应的图像（已实现：条件扩散 + classifier-free guidance，见"指定数字生成"一节；`python main.py sample --digit all --guidance-w 2.0`）
 
 要求：
 - 控制模型大小，CPU 训练小时不超过 2h
@@ -115,55 +135,87 @@ $$\boxed{x_{t-1} = \frac{1}{\sqrt{\alpha_t}} \left(x_t - \frac{\beta_t}{\sqrt{1-
 
 ### 少步采样与 DDIM
 
-ancestral sampling 必须严格走满全部 $T$ 步（相邻时间步之间的后验转移），推理耗时与 $T$ 成正比。希望在**不重训**的前提下，只用 $S\ll T$ 步完成采样。
+#### 1. 突破口：训练只约束“边缘分布”
 
-**关键观察：训练目标只约束边缘分布**
+要理解 DDIM 的加速采样，首先得看穿 DDPM 训练目标的本质。扩散模型的训练损失，实际上只约束**单点边缘分布**，即：
+$$q(x_t|x_0)=\mathcal{N}(x_0\sqrt{\bar{\alpha}_t},\ 1-\bar{\alpha}_t)$$
 
-回顾训练过程：损失只涉及一步加噪的边缘分布 $q(x_t|x_0)=\mathcal{N}(x_0\sqrt{\bar{\alpha}_t},1-\bar{\alpha}_t)$，从未涉及相邻时间步之间的联合分布。这意味着，只要保持边缘分布不变，时间步之间的转移规则可以重新设计——包括"跳步"。DDIM（Denoising Diffusion Implicit Models）正是利用这一点，构造了一族与 DDPM 边缘分布相同、但非马尔可夫的前向过程，其反向过程可以在时间步子序列上定义。
+这个公式描述的是一张干净图片 $x_0$ 在第 $t$ 步时，被独立高斯噪声污染后的“快照”分布。它完全不涉及 $x_t$ 与 $x_{t-1}$ 之间是如何一步一步演变过来的。
 
-**DDIM 反向更新**
+用通俗的话说：**训练过程只检查“第 $t$ 步的图长什么样”，至于这张图是从 $t-1$ 步爬楼梯过来的，还是从起点空降过来的，损失函数根本不关心。**
 
-取降序子序列 $\tau=\{\tau_1,\tau_2,...,\tau_S\}\subseteq\{0,1,...,T-1\}$（实现中在 $[0,T-1]$ 上均匀取 $S$ 个点，含端点），$\bar{\alpha}$ 仍查训练时的原调度表。
+这给了我们极大的设计自由：只要保证最终算出来的边缘分布符合上式，我们完全可以重新规划从 $x_T$ 到 $x_0$ 的“行走路径”，从而绕开必须走满 $T$ 步的限制。
 
-目标是构造一步从 $\tau_i$ 到 $\tau_{i-1}$ 的转移。手中可用的材料只有：网络预测的噪声 $\epsilon_\theta(x_{\tau_i},\tau_i)$（可反解出 $\hat{x}_0$）、原调度表、以及新鲜随机噪声 $z\sim\mathcal{N}(0,1)$。
+#### 2. 重新设计路径：非马尔可夫前向过程
 
-仿照一步加噪公式 $x_t = x_0\sqrt{\bar{\alpha}_t} + \epsilon\sqrt{1-\bar{\alpha}_t}$ 的结构（原图方向 + 噪声方向），设这一步的更新形如：
+DDPM 的前向过程是马尔可夫链：$x_t$ 只依赖上一步 $x_{t-1}$，像爬楼梯一样，必须一阶一阶地走。
 
-$$x_{\tau_{i-1}} = \hat{x}_0\sqrt{\bar{\alpha}_{\tau_{i-1}}} + c\cdot\epsilon_\theta(x_{\tau_i},\tau_i) + \sigma_i z,\qquad \hat{x}_0 = \frac{x_{\tau_i} - \sqrt{1-\bar{\alpha}_{\tau_i}}\,\epsilon_\theta}{\sqrt{\bar{\alpha}_{\tau_i}}}$$
+DDIM 则构造了一族**非马尔可夫**的前向过程。它允许 $x_t$ 同时依赖于 $x_0$ 和上一步的结果，甚至可以直接“跳步”——从 $x_{\tau_i}$ 直接转移到 $x_{\tau_{i-1}}$（其中 $\tau$ 是降序子序列）。只要新过程的边缘分布仍然等于 $\mathcal{N}(x_0\sqrt{\bar{\alpha}_t},\ 1-\bar{\alpha}_t)$，这种路径在数学上就是完全合法的。
 
-其中 $c$、$\sigma_i$ 是待定系数：$\sigma_i$ 是本步**新注入随机噪声的强度**，$c$ 是噪声方向的系数。
+**直观理解**：DDPM 规定必须爬楼梯（一步一阶）；DDIM 说我可以坐电梯直达任意楼层，只要到达时窗外的风景（边缘分布）和爬楼梯看到的完全一样，那我就可以随意设计路线。
 
-**确定系数：边缘分布约束**
+#### 3. 反向更新的核心工程构造
 
-如果网络预测准确（$\epsilon_\theta \approx \epsilon$），更新后的 $x_{\tau_{i-1}}$ 就应该落在 $\tau_{i-1}$ 水平的边缘分布上，即每个像素的方差必须为 $1-\bar{\alpha}_{\tau_{i-1}}$。
+现在我们要设计一步反向更新：从 $x_{\tau_i}$ 跳到 $x_{\tau_{i-1}}$。关键问题是：这一步的公式应该长什么样？
 
-$\epsilon_\theta$ 由 $x_{\tau_i}$ 决定（确定量），$z$ 是新采的（与 $\epsilon_\theta$ 相互独立），由正态分布的性质 2，噪声部分的方差为 $c^2+\sigma_i^2$。于是：
+**（一）锚定“预测的干净图像”**
 
-$$c^2+\sigma_i^2 = 1-\bar{\alpha}_{\tau_{i-1}} \quad\Rightarrow\quad c = \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}$$
+手里有当前噪声图 $x_{\tau_i}$ 和网络预测的噪声 $\epsilon_\theta$。利用边缘分布公式，我们可以反解出一个**预测的干净图像**：
+$$\hat{x}_0 = \frac{x_{\tau_i} - \sqrt{1-\bar{\alpha}_{\tau_i}}\,\epsilon_\theta}{\sqrt{\bar{\alpha}_{\tau_i}}}$$
 
-也就是说：**一旦选定 $\sigma_i$，噪声方向系数 $c$ 就被边缘分布唯一确定；而 $\sigma_i$ 本身是自由的**——取 $[0,\sqrt{1-\bar{\alpha}_{\tau_{i-1}}}]$ 中的任意值，边缘分布都成立。这正对应上面的观察：训练只约束边缘分布，所以合法的反向转移规则不唯一，而是有"一族"，$\sigma_i$ 就是这一族规则的参数。
+既然我们唯一确定的是：$x_{\tau_{i-1}}$ 必须落在以 $\hat{x}_0$ 为中心、方差为 $1-\bar{\alpha}_{\tau_{i-1}}$ 的边缘分布上。那么它的结构**必须**长成“原图方向 + 噪声方向”的样子：
+$$x_{\tau_{i-1}} = \sqrt{\bar{\alpha}_{\tau_{i-1}}}\,\hat{x}_0 + \text{（某种噪声）}$$
 
-**如何选择 $\sigma_i$**
+**（二）噪声项的设计：为何拆成 $c\cdot\epsilon_\theta(x_{\tau_i}) + \sigma_i z$？**
 
-一个自然的基准是 DDPM：让 $\sigma_i$ 等于广义后验 $q(x_{\tau_{i-1}}|x_{\tau_i},x_0)$ 的标准差（把上一节后验方差公式中的相邻步换成子序列上的 $\tau_i,\tau_{i-1}$）：
+这里的“某种噪声”**不是推导出来的，而是巧妙设计出来的**。它被刻意拆成两项，原因有三：
 
-$$\sigma_i^{DDPM} = \sqrt{\tilde{\beta}} = \sqrt{\frac{1-\bar{\alpha}_{\tau_{i-1}}}{1-\bar{\alpha}_{\tau_i}}}\sqrt{1-\frac{\bar{\alpha}_{\tau_i}}{\bar{\alpha}_{\tau_{i-1}}}}$$
+- **顺应代数结构**：将 $\hat{x}_0$ 代回上式后，展开项里天然会掉下来一个与 $\epsilon_\theta$ 成比例的系数项。因此，把噪声的第一部分写成 $c\cdot\epsilon_\theta$ 是为了方便合并同类项。
 
-再引入系数 $\eta\in[0,1]$，在它与 $0$ 之间插值，即 $\sigma_i = \eta\,\sigma_i^{DDPM}$。代回更新式，得到 DDIM 反向更新公式：
+- **方差预算的“切蛋糕”逻辑（最本质）**：  
+  在给定 $\hat{x}_0$ 的条件下，$x_{\tau_{i-1}}$ 的总噪声方差预算是固定的：
+  $$\text{总预算} = 1-\bar{\alpha}_{\tau_{i-1}}$$
 
-$$\boxed{x_{\tau_{i-1}} = \sqrt{\bar{\alpha}_{\tau_{i-1}}}\,\hat{x}_0 + \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}\;\epsilon_\theta(x_{\tau_i},\tau_i) + \sigma_i z}$$
+  我们手里恰好有两股独立的噪声来源：
+  - 来源 A（历史方向）：上一步残留的噪声方向 $\epsilon_\theta$，跟着它能保持图像轮廓的连续性。
+  - 来源 B（新随机探索）：新采的高斯噪声 $z\sim\mathcal{N}(0,1)$，用于弥补模型预测误差，增加生成多样性。
 
-- $\eta=1$：整式就是 DDPM 的 ancestral sampling（均值、方差都与广义后验一致；子序列取完整序列时即上一节 boxed 公式）
-- $\eta=0$：$\sigma_i=0$，无新噪声注入，整个过程**完全确定**——相同的初始噪声 $x_T$ 必然生成相同的图，这也是 "implicit" 一词的由来
+  因为 $\epsilon_\theta$ 和 $z$ 相互独立，方差具有可加性，所以必须把总预算切成两块：
+  $$c^2 + \sigma_i^2 = 1-\bar{\alpha}_{\tau_{i-1}}$$
 
-直观理解：每一步反向，目标水平的噪声总量 $1-\bar{\alpha}_{\tau_{i-1}}$ 是一块"预算"，被切成两部分——模型已经解释掉的部分（$\sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}\cdot\epsilon_\theta$）和重新随机化的部分（$\sigma_i z$）。$\eta=0$ 表示完全信任模型给出的方向；$\eta$ 越大，每步"重新掷骰子"的成分越多。
+- **保持高斯性的最简操作**：两个独立高斯变量的线性组合依然是高斯分布，这使得我们可以继续用简单的均值和方差来描述整个分布，避免数学复杂化。
 
-**为什么少步时倾向 $\eta=0$**
+**灵魂比喻**：  
+$c\cdot\epsilon_\theta$ 是你手里的**指南针**，指向出口的大致方向（确定性引导）。  
+$\sigma_i z$ 是你随机迈出的**小碎步**，用于探索捷径（随机性探索）。  
+两者线性相加，就是在“方向引导”和“随机探索”之间做出的最简单平衡。
 
-步数 $S$ 越小，子序列相邻时间步之间的噪声级差越大，$\hat{x}_0$ 的预测误差被放大得越多；$\eta=1$ 每步还要额外注入一份新噪声，误差进一步累积，少步时样本明显模糊。$\eta=0$ 消除了这一扰动来源，低步数（如 20~50 步）下质量显著更好；$S$ 接近 $T$ 时两者差别不大。
+#### 4. 系数确定与 $\eta$ 的调节作用
 
-> [!note] 术语澄清
-> 一步到位的闭式加噪属于 DDPM 的前向边缘分布，与 DDIM 无关；DDIM 特指上述（可确定性的）反向采样方法。训练代码完全不需要改动——DDIM 与 DDPM 使用同一个训练好的 $\epsilon_\theta$。
+根据方差预算公式 $c^2+\sigma_i^2 = 1-\bar{\alpha}_{\tau_{i-1}}$，可以解出噪声方向系数：
+$$c = \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}$$
+
+这个式子揭示了一个核心事实：**一旦选定 $\sigma_i$，$c$ 就被唯一确定；而 $\sigma_i$ 本身是自由的**——这完美呼应了“训练只约束边缘分布，所以转移规则不唯一”的观察。
+
+为了统一调控这个自由度，DDIM 引入系数 $\eta\in[0,1]$，令 $\sigma_i = \eta \cdot \sigma_i^{DDPM}$，其中 $\sigma_i^{DDPM}$ 是广义后验分布的标准差：
+$$\sigma_i^{DDPM} = \sqrt{\frac{1-\bar{\alpha}_{\tau_{i-1}}}{1-\bar{\alpha}_{\tau_i}}}\sqrt{1-\frac{\bar{\alpha}_{\tau_i}}{\bar{\alpha}_{\tau_{i-1}}}}$$
+
+将上述关系代回更新式，得到统一的 DDIM 反向更新公式：
+$$\boxed{
+x_{\tau_{i-1}} = \sqrt{\bar{\alpha}_{\tau_{i-1}}}\,\hat{x}_0 + \sqrt{1-\bar{\alpha}_{\tau_{i-1}}-\sigma_i^2}\;\epsilon_\theta(x_{\tau_i},\tau_i) + \sigma_i z
+}$$
+
+- 当 $\eta=1$ 时，整式完全退化为 DDPM 的祖先采样（子序列取完整时即标准 DDPM 公式）。
+- 当 $\eta=0$ 时，$\sigma_i=0$，无新噪声注入，整个过程**完全确定**——相同的初始噪声 $x_T$ 必然生成相同的图，这正是 “Implicit” 一词的由来。
+
+#### 5. 少步采样为何倾向 $\eta=0$ 的确定性模式
+
+当采样步数 $S$ 很小时，子序列相邻时间步之间的噪声级差会变得很大，此时 $\hat{x}_0$ 的预测误差会被显著放大。
+
+- 如果采用 $\eta=1$（DDPM 模式），每步还要额外注入一份全新的随机噪声 $z$。这相当于在已经偏离的路径上再“乱抖一下”，导致预测误差逐级累积，最终生成结果明显模糊。
+- 如果采用 $\eta=0$（确定性 DDIM），则完全消除了随机扰动这一误差来源。虽然每一步都完全依赖模型预测，但至少没有额外的干扰项去放大错误。
+
+**直观理解**：步子跨得越大（步数越少），就越要攥紧指南针（$\eta=0$），尽量减少瞎蹦跶；只有当步数足够多（$S$ 接近 $T$）时，偶尔掷骰子（$\eta=1$）探索一下才不至于跑偏，此时两者差别不大。
 
 ### U-Net
 $SiLU(x) = x \cdot \frac{1}{1+e^{-x}}$

@@ -1,0 +1,351 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated as
+% required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+\datalist[entry]{nyt/global//global/global}
+  \entry{ho2020denoising}{inproceedings}{}
+    \name{author}{3}{}{%
+      {{hash=HJ}{%
+         family={Ho},
+         familyi={H\bibinitperiod},
+         given={Jonathan},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=JA}{%
+         family={Jain},
+         familyi={J\bibinitperiod},
+         given={Ajay},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=AP}{%
+         family={Abbeel},
+         familyi={A\bibinitperiod},
+         given={Pieter},
+         giveni={P\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{HJJAAP1}
+    \strng{fullhash}{HJJAAP1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2020}
+    \field{labeldatesource}{}
+    \field{sortinit}{H}
+    \field{sortinithash}{H}
+    \field{booktitle}{Proc. of NeurIPS}
+    \field{title}{Denoising Diffusion Probabilistic Models}
+    \field{year}{2020}
+  \endentry
+
+  \entry{ho2022classifierfree}{inproceedings}{}
+    \name{author}{2}{}{%
+      {{hash=HJ}{%
+         family={Ho},
+         familyi={H\bibinitperiod},
+         given={Jonathan},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=ST}{%
+         family={Salimans},
+         familyi={S\bibinitperiod},
+         given={Tim},
+         giveni={T\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{HJST1}
+    \strng{fullhash}{HJST1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2022}
+    \field{labeldatesource}{}
+    \field{sortinit}{H}
+    \field{sortinithash}{H}
+    \field{booktitle}{NeurIPS Workshop on Diffusion Models}
+    \field{title}{Classifier-Free Diffusion Guidance}
+    \field{year}{2022}
+  \endentry
+
+  \entry{lecun1998gradient}{article}{}
+    \name{author}{4}{}{%
+      {{hash=LY}{%
+         family={LeCun},
+         familyi={L\bibinitperiod},
+         given={Yann},
+         giveni={Y\bibinitperiod},
+      }}%
+      {{hash=BL}{%
+         family={Bottou},
+         familyi={B\bibinitperiod},
+         given={L{\'e}on},
+         giveni={L\bibinitperiod},
+      }}%
+      {{hash=BY}{%
+         family={Bengio},
+         familyi={B\bibinitperiod},
+         given={Yoshua},
+         giveni={Y\bibinitperiod},
+      }}%
+      {{hash=HP}{%
+         family={Haffner},
+         familyi={H\bibinitperiod},
+         given={Patrick},
+         giveni={P\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{LY+1}
+    \strng{fullhash}{LYBLBYHP1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{1998}
+    \field{labeldatesource}{}
+    \field{sortinit}{L}
+    \field{sortinithash}{L}
+    \field{number}{11}
+    \field{pages}{2278\bibrangedash 2324}
+    \field{title}{Gradient-based learning applied to document recognition}
+    \field{volume}{86}
+    \field{journaltitle}{Proceedings of the IEEE}
+    \field{year}{1998}
+  \endentry
+
+  \entry{nichol2021improved}{inproceedings}{}
+    \name{author}{2}{}{%
+      {{hash=NAQ}{%
+         family={Nichol},
+         familyi={N\bibinitperiod},
+         given={Alexander\bibnamedelima Quinn},
+         giveni={A\bibinitperiod\bibinitdelim Q\bibinitperiod},
+      }}%
+      {{hash=DP}{%
+         family={Dhariwal},
+         familyi={D\bibinitperiod},
+         given={Prafulla},
+         giveni={P\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{NAQDP1}
+    \strng{fullhash}{NAQDP1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2021}
+    \field{labeldatesource}{}
+    \field{sortinit}{N}
+    \field{sortinithash}{N}
+    \field{booktitle}{Proc. of ICML}
+    \field{title}{Improved Denoising Diffusion Probabilistic Models}
+    \field{year}{2021}
+  \endentry
+
+  \entry{paszke2019pytorch}{inproceedings}{}
+    \true{moreauthor}
+    \true{morelabelname}
+    \name{author}{10}{}{%
+      {{hash=PA}{%
+         family={Paszke},
+         familyi={P\bibinitperiod},
+         given={Adam},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=GS}{%
+         family={Gross},
+         familyi={G\bibinitperiod},
+         given={Sam},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=MF}{%
+         family={Massa},
+         familyi={M\bibinitperiod},
+         given={Francisco},
+         giveni={F\bibinitperiod},
+      }}%
+      {{hash=LA}{%
+         family={Lerer},
+         familyi={L\bibinitperiod},
+         given={Adam},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=BJ}{%
+         family={Bradbury},
+         familyi={B\bibinitperiod},
+         given={James},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=CG}{%
+         family={Chanan},
+         familyi={C\bibinitperiod},
+         given={Gregory},
+         giveni={G\bibinitperiod},
+      }}%
+      {{hash=KT}{%
+         family={Killeen},
+         familyi={K\bibinitperiod},
+         given={Trevor},
+         giveni={T\bibinitperiod},
+      }}%
+      {{hash=LZ}{%
+         family={Lin},
+         familyi={L\bibinitperiod},
+         given={Zeming},
+         giveni={Z\bibinitperiod},
+      }}%
+      {{hash=GN}{%
+         family={Gimelshein},
+         familyi={G\bibinitperiod},
+         given={Natalia},
+         giveni={N\bibinitperiod},
+      }}%
+      {{hash=AL}{%
+         family={Antiga},
+         familyi={A\bibinitperiod},
+         given={Luca},
+         giveni={L\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{PA+1}
+    \strng{fullhash}{PAGSMFLABJCGKTLZGNAL+1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2019}
+    \field{labeldatesource}{}
+    \field{sortinit}{P}
+    \field{sortinithash}{P}
+    \field{booktitle}{Proc. of NeurIPS}
+    \field{title}{PyTorch: An Imperative Style, High-Performance Deep Learning Library}
+    \field{year}{2019}
+  \endentry
+
+  \entry{ronneberger2015unet}{inproceedings}{}
+    \name{author}{3}{}{%
+      {{hash=RO}{%
+         family={Ronneberger},
+         familyi={R\bibinitperiod},
+         given={Olaf},
+         giveni={O\bibinitperiod},
+      }}%
+      {{hash=FP}{%
+         family={Fischer},
+         familyi={F\bibinitperiod},
+         given={Philipp},
+         giveni={P\bibinitperiod},
+      }}%
+      {{hash=BT}{%
+         family={Brox},
+         familyi={B\bibinitperiod},
+         given={Thomas},
+         giveni={T\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{ROFPBT1}
+    \strng{fullhash}{ROFPBT1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2015}
+    \field{labeldatesource}{}
+    \field{sortinit}{R}
+    \field{sortinithash}{R}
+    \field{booktitle}{Proc. of MICCAI}
+    \field{title}{U-Net: Convolutional Networks for Biomedical Image Segmentation}
+    \field{year}{2015}
+  \endentry
+
+  \entry{song2021ddim}{inproceedings}{}
+    \name{author}{3}{}{%
+      {{hash=SJ}{%
+         family={Song},
+         familyi={S\bibinitperiod},
+         given={Jiaming},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=MC}{%
+         family={Meng},
+         familyi={M\bibinitperiod},
+         given={Chenlin},
+         giveni={C\bibinitperiod},
+      }}%
+      {{hash=ES}{%
+         family={Ermon},
+         familyi={E\bibinitperiod},
+         given={Stefano},
+         giveni={S\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{SJMCES1}
+    \strng{fullhash}{SJMCES1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2021}
+    \field{labeldatesource}{}
+    \field{sortinit}{S}
+    \field{sortinithash}{S}
+    \field{booktitle}{Proc. of ICLR}
+    \field{title}{Denoising Diffusion Implicit Models}
+    \field{year}{2021}
+  \endentry
+
+  \entry{song2021score}{inproceedings}{}
+    \name{author}{6}{}{%
+      {{hash=SY}{%
+         family={Song},
+         familyi={S\bibinitperiod},
+         given={Yang},
+         giveni={Y\bibinitperiod},
+      }}%
+      {{hash=SDJ}{%
+         family={Sohl-Dickstein},
+         familyi={S\bibinithyphendelim D\bibinitperiod},
+         given={Jascha},
+         giveni={J\bibinitperiod},
+      }}%
+      {{hash=KDP}{%
+         family={Kingma},
+         familyi={K\bibinitperiod},
+         given={Diederik\bibnamedelima P.},
+         giveni={D\bibinitperiod\bibinitdelim P\bibinitperiod},
+      }}%
+      {{hash=KA}{%
+         family={Kumar},
+         familyi={K\bibinitperiod},
+         given={Abhishek},
+         giveni={A\bibinitperiod},
+      }}%
+      {{hash=ES}{%
+         family={Ermon},
+         familyi={E\bibinitperiod},
+         given={Stefano},
+         giveni={S\bibinitperiod},
+      }}%
+      {{hash=PB}{%
+         family={Poole},
+         familyi={P\bibinitperiod},
+         given={Ben},
+         giveni={B\bibinitperiod},
+      }}%
+    }
+    \strng{namehash}{SY+1}
+    \strng{fullhash}{SYSDJKDPKAESPB1}
+    \field{labelnamesource}{author}
+    \field{labeltitlesource}{title}
+    \field{labelyear}{2021}
+    \field{labeldatesource}{}
+    \field{sortinit}{S}
+    \field{sortinithash}{S}
+    \field{booktitle}{Proc. of ICLR}
+    \field{title}{Score-Based Generative Modeling through Stochastic Differential Equations}
+    \field{year}{2021}
+  \endentry
+\enddatalist
+\endinput

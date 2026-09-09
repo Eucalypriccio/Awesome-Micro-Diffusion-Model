@@ -54,6 +54,7 @@ def res_block(x, time_emb):
 
 - 正弦嵌入：维度 time_dim = 128，$f_i = 10000^{-2i/d}$，偶数位 sin、奇数位 cos（README 公式）。
 - 两层 MLP：`Linear(128→128) → SiLU → Linear(128→128)`，得到全网络共享的 time_emb，再经各残差块专属 MLP 产生各自的 γ、β。
+- 标签嵌入（扩展二）：`nn.Embedding(11, time_dim)`（索引 10 = 空标签 ∅），与 time_emb 相加后走同一注入通路。
 
 ### 1.4 瓶颈自注意力
 
@@ -225,4 +226,4 @@ Awesome-Micro-Diffusion-Model/
 ## 6. 扩展预留（本期不实现，设计时留好接口）
 
 1. **不同采样步数对比（已实现）**：采用 DDIM 统一形式（η 参数化；可证明 η=1 与最初的广义后验实现系数代数等价，η=0 为确定性采样）。`python main.py sample --sample-steps 1000 200 50 20 --eta 0` 逐一出图并打印耗时汇总；理论已写入 README "少步采样与 DDIM" 一节。
-2. **指定数字生成（条件扩散）**：`nn.Embedding(10, time_dim)` 把数字标签嵌入与 time_emb 相加后注入各残差块；训练时标签取自 DataLoader，采样时终端输入 0-9 指定生成类别。模型 forward 预留可选 `labels` 参数位。
+2. **指定数字生成（已实现）**：`nn.Embedding(11, time_dim)`（索引 10 = 空标签 ∅）与 time_emb 相加后复用残差块 γ/β 注入通路；训练时以 10% 概率把标签替换为 ∅（同一网络学会条件/无条件两种模式）；采样用 classifier-free guidance：`--digit 0-9|all --guidance-w W`（`all` 生成 0-9 各 8 张、每行一个数字的网格）。理论见 README "指定数字生成" 一节。旧的无条件 checkpoint 在采样时据 state_dict 自动识别兼容。注意：条件模型需重新训练。

@@ -68,6 +68,17 @@ def run_check(config: Config):
     assert torch.isfinite(x_few).all(), "DDIM 少步采样出现 NaN/Inf"
     print("  DDIM (eta=0, 10 steps) [OK]")
 
+    # 条件生成路径：标签前向 + CFG 引导采样，形状与数值合法性
+    if getattr(model, "conditional", False):
+        labels = torch.randint(0, config.num_classes, (4,), device=device)
+        pred_cond = model(x_t, t, labels)
+        assert pred_cond.shape == x0.shape, "条件前向输出形状不一致"
+        x_cfg = diffusion.p_sample(model, x_t, t_index=5, prev_t_index=4, eta=0.0,
+                                   labels=labels, guidance_w=2.0)
+        assert x_cfg.shape == x0.shape, "CFG 引导采样输出形状不一致"
+        assert torch.isfinite(x_cfg).all(), "CFG 引导采样出现 NaN/Inf"
+        print("  conditional forward + CFG guidance [OK]")
+
     # ---------- 4. 单 batch 过拟合 ----------
     print("\n[check 4/4] 单 batch 过拟合测试 (200 steps) ...")
     set_seed(config.seed)

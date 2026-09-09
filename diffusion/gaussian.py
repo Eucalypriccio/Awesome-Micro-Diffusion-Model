@@ -49,14 +49,16 @@ class GaussianDiffusion(nn.Module):
         return sqrt_ab * x0 + sqrt_1_ab * noise
 
     @torch.no_grad()
-    def p_sample(self, model, x, t_index, prev_t_index, eta=1.0):
+    def p_sample(self, model, x, t_index, prev_t_index, eta=1.0, labels=None, guidance_w=None):
         """DDIM 反向单步：由 x_t 计算 x_prev（公式见 README "少步采样与 DDIM" 一节）。
 
-        x_prev = sqrt(ᾱ_prev) * x0_pred + sqrt(1-ᾱ_prev-σ²) * ε_θ + σ z
+        x_prev = sqrt(ᾱ_prev) * x0_pred + sqrt(1-ᾱ_prev-σ²) * ε̂ + σ z
         σ = eta * sqrt((1-ᾱ_prev)/(1-ᾱ_t)) * sqrt(1-ᾱ_t/ᾱ_prev)
 
         eta=1 时与广义后验（DDPM ancestral sampling）系数代数等价；
         eta=0 时为确定性 DDIM。prev_t_index 可跳跃（子序列少步采样）。
+        labels 与 guidance_w 同时给出时，ε̂ 为 classifier-free guidance 合成：
+        ε̂ = ε(∅) + w * (ε(y) - ε(∅))（见 README "指定数字生成" 一节）。
         """
         t = torch.full((x.shape[0],), t_index, device=x.device, dtype=torch.long)
         alpha_bar_t = _extract(self.alpha_bar, t, x.ndim)
@@ -65,9 +67,18 @@ class GaussianDiffusion(nn.Module):
         else:
             alpha_bar_prev = _extract(self.alpha_bar, torch.full_like(t, prev_t_index), x.ndim)
 
-        pred_noise = model(x, t)
+        if labels is None or guidance_w is None:
+            pred_noise = model(x, t, labels)   # UNet 中 labels=None 即空标签（无条件模式）
+        else:
+            # classifier-free guidance：条件/无条件各前向一次，按 w 合成
+            eps_uncond = model(x, t, None)
+            eps_cond = model(x, t, labels)
+            pred_noise = eps_uncond + guidance_w * (eps_cond - eps_uncond)
         # 由预测噪声反解 x0：x0 = (x_t - sqrt(1-alpha_bar_t) * eps) / sqrt(alpha_bar_t)
         pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * pred_noise) / torch.sqrt(alpha_bar_t)
+        # 截断到数据范围 [-1,1]：高噪声区 sqrt(alpha_bar_t) 极小，除法会把预测偏差放大
+        # 数百倍（实测 eta=0 首步 x0_pred 达 800+ 导致轨迹发散），截断是 DDIM 的标准细节
+        pred_x0 = pred_x0.clamp(-1, 1)
 
         sigma = eta * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar_t)) \
             * torch.sqrt(1 - alpha_bar_t / alpha_bar_prev)
@@ -78,11 +89,13 @@ class GaussianDiffusion(nn.Module):
         return x_prev + sigma * noise
 
     @torch.no_grad()
-    def sample_loop(self, model, shape, device, sample_steps=None, eta=1.0, log_interval=100):
+    def sample_loop(self, model, shape, device, sample_steps=None, eta=1.0,
+                    labels=None, guidance_w=None, log_interval=100):
         """完整采样：从纯噪声 x_T 逐步去噪到 x_0，输出 clamp 到 [-1,1]。
 
         sample_steps 默认等于 T（走满全部时间步）；传入更小的步数时在 [0,T-1] 上
         均匀取子序列跳步采样（DDIM，见 README 对应小节）。eta 控制随机性。
+        labels（指定数字）与 guidance_w 同时给出时按 classifier-free guidance 采样。
         """
         model.eval()
         timesteps = make_timestep_subsequence(self.T, sample_steps or self.T)
@@ -90,7 +103,8 @@ class GaussianDiffusion(nn.Module):
         start_time = time.perf_counter()
         for i, t_index in enumerate(timesteps):
             prev_t_index = timesteps[i + 1] if i + 1 < len(timesteps) else -1
-            x = self.p_sample(model, x, t_index, prev_t_index, eta=eta)
+            x = self.p_sample(model, x, t_index, prev_t_index, eta=eta,
+                              labels=labels, guidance_w=guidance_w)
             if log_interval and (i + 1) % log_interval == 0:
                 elapsed = time.perf_counter() - start_time
                 print(f"  sampling {i + 1}/{len(timesteps)} | elapsed {elapsed:.1f}s", flush=True)

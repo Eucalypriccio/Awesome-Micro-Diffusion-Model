@@ -18,6 +18,12 @@ class Config:
     num_heads: int = 4            # 瓶颈自注意力头数（96 通道 -> head_dim 24）
     upsample_smooth: bool = False # True 时上采样后接 3x3 平滑卷积（约占 19% 算力，CPU 上去掉）
 
+    # 条件生成（扩展二：指定数字采样，classifier-free guidance）
+    conditional: bool = True      # 是否带数字标签条件（旧的无条件存档在采样时自动兼容）
+    num_classes: int = 10         # 数字 0-9；空标签 ∅ 用索引 num_classes 表示
+    label_drop_prob: float = 0.1  # 训练时把标签替换为 ∅ 的概率
+    guidance_w: float = 2.0       # 采样时的默认引导强度（1=普通条件采样，0=无条件）
+
     # 扩散过程
     T: int = 1000                 # 总扩散步数
     schedule: str = "linear"      # linear / cosine

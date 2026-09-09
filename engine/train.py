@@ -81,14 +81,20 @@ def train(config: Config, resume_path=None):
         model.train()
         epoch_start = time.perf_counter()
         loss_sum = 0.0
-        for step, (x0, _) in enumerate(dataloader):
+        for step, (x0, labels) in enumerate(dataloader):
             x0 = x0.to(device=device, memory_format=torch.channels_last)
+            labels = labels.to(device)
+            # classifier-free guidance：以一定概率把标签替换为空标签 ∅（索引 num_classes），
+            # 让同一个网络同时学会条件与无条件两种预测
+            if config.conditional:
+                drop_mask = torch.rand(labels.shape[0], device=device) < config.label_drop_prob
+                labels[drop_mask] = config.num_classes
             # 每个样本随机采一个时间步 t 和噪声，闭式一步到位加噪（无梯度）
             t = torch.randint(0, config.T, (x0.shape[0],), device=device)
             noise = torch.randn_like(x0)
             x_t = diffusion.q_sample(x0, t, noise)
 
-            pred_noise = model(x_t, t)
+            pred_noise = model(x_t, t, labels if config.conditional else None)
             loss = loss_fn(pred_noise, noise)
 
             optimizer.zero_grad()
@@ -131,10 +137,10 @@ def train(config: Config, resume_path=None):
                 device, log_interval=200)
             save_image_grid(images, os.path.join(config.output_dir, f"samples_epoch{epoch:03d}.png"), nrow=4)
 
-    final_path = os.path.join(config.checkpoint_dir, "unet_final.pt")
+    final_path = os.path.join(config.checkpoint_dir, f"{config.out_ckpt}.pt")
     torch.save(checkpoint, final_path)
     total_time = time.perf_counter() - train_start
     print(f"training finished in {format_time(total_time)} | final checkpoint: {final_path}")
 
-    save_loss_curve(epoch_losses, os.path.join(config.output_dir, "loss_curve.png"))
+    save_loss_curve(epoch_losses, os.path.join(config.output_dir, f"loss_curve_{config.epochs}.png"))
     return final_path

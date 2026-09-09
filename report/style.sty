@@ -1,0 +1,354 @@
+% ==========================================
+%  style.sty — 技术报告样式文件
+%  功能：定义文档整体视觉风格，包括标题页、目录、
+%        章节标题、图表标题、参考文献、代码块等样式
+%  编译：需 XeLaTeX / LuaLaTeX
+% ==========================================
+\ProvidesPackage{style}[Tech Report Style]
+
+% ==========================================
+% 一、基础宏包加载
+% ==========================================
+\RequirePackage{geometry}     % 页面边距设置
+\RequirePackage{setspace}     % 行间距控制
+\RequirePackage{parskip}      % 段落间距控制
+\RequirePackage{xcolor}       % 颜色支持（文字、背景色等）
+\RequirePackage{fontspec}
+\RequirePackage{xeCJK}        % 中日韩文字支持（需 XeLaTeX）
+\RequirePackage{graphicx}     % 图片插入（Logo 等）
+\RequirePackage{booktabs}     % 三线表（\toprule, \midrule, \bottomrule）
+\RequirePackage{amsmath}      % 数学公式支持
+\RequirePackage{unicode-math} % Unicode 数学字体支持（需 XeLaTeX）
+% 数学环境里的字母格式（\mathrm、\mathbf、\mathit、\mathsf、\mathtt 等）
+% 默认都会跟随正文字体，这里统一改为使用数学字体本身，避免与正文混排。
+% 如需恢复某一项跟随正文，把对应的 sym 改为 text 即可。
+\unimathsetup{
+    mathup=sym,
+    mathrm=sym,
+    mathit=sym,
+    mathbf=sym,
+    mathsf=sym,
+    mathtt=sym,
+}
+\RequirePackage{titlesec}     % 章节标题格式定制
+\RequirePackage{caption}      % 图表标题（Caption）格式定制
+\RequirePackage{tocloft}      % 目录（Table of Contents）格式定制
+\RequirePackage{enumitem}     % 列表环境（itemize/enumerate）定制
+\RequirePackage{listings}     % 代码块高亮与格式
+\RequirePackage{hyperref}     % 超链接与 PDF 书签
+\RequirePackage{appendix}     % 附录支持
+\RequirePackage[most]{tcolorbox}
+\tcbuselibrary{listings}      % 供代码块（codeblock）环境使用
+
+% ==========================================
+% 一-B、提示框与代码块（simplenote / lightnote / darknote / codeblock）
+%    所有配色集中在此定义，环境样式见下方各定义
+%    如需调整外观，直接修改对应颜色或选项即可
+% ==========================================
+
+% --- 提示框配色 ---
+\definecolor{simpleshade}{HTML}{FFFFFF}
+\definecolor{simplebar}{HTML}{FFFFFF}
+\definecolor{simpletext}{HTML}{000000}   % simplenote 内文字颜色
+
+\definecolor{lightshade}{HTML}{F7F7F7}
+\definecolor{lightbar}{HTML}{113BC1}
+\definecolor{lighttext}{HTML}{000000}    % lightnote 内文字颜色
+
+% \definecolor{darkshade}{HTML}{212121}
+% \definecolor{darkbar}{HTML}{F58967}
+% \definecolor{darktext}{HTML}{FFFFFF}     % darknote 内文字颜色
+
+\definecolor{codeshade}{HTML}{212121}    % 代码块背景色
+\definecolor{codebar}{HTML}{212121}      % 代码块边框颜色
+\definecolor{codetext}{HTML}{FFFFFF}     % 代码文字颜色
+\definecolor{commentcolor}{HTML}{1FA954}
+\definecolor{keywordcolor}{HTML}{F58967}
+\definecolor{stringcolor}{HTML}{315DEC}
+
+\definecolor{abstractfill}{HTML}{F7F7F7}   % 首页摘要框背景（风格 current）
+\definecolor{abstractframe}{HTML}{113BC1}  % 首页摘要框边框（风格 en）
+
+% --- 提示框环境（基于 tcolorbox）---
+\newtcolorbox{simplenote}{
+    enhanced,
+    breakable,
+    colback=simpleshade,        % 背景色
+    colframe=simplebar,         % 色条颜色
+    coltext=simpletext,         % 文字颜色
+    boxrule=0pt,                % 默认无边框
+    leftrule=0pt,
+    toprule=0pt,
+    rightrule=0pt,
+    bottomrule=0pt,
+    arc=0pt,                    % 直角
+    left=24pt,                  
+    right=25pt,
+    top=24pt,
+    bottom=24pt,
+    parskip=0pt,
+}
+
+\newtcolorbox{lightnote}{
+    enhanced,
+    breakable,
+    colback=lightshade,         % 背景色
+    colframe=lightbar,          % 左侧色条颜色
+    coltext=lighttext,          % 文字颜色
+    boxrule=0pt,
+    leftrule=2pt,               % 仅左侧 2pt 色条
+    toprule=0pt,
+    rightrule=0pt,
+    bottomrule=0pt,
+    arc=0pt,
+    left=12pt,
+    right=12pt,
+    top=12pt,
+    bottom=12pt,
+    parskip=0pt,
+}
+
+% \newtcolorbox{darknote}{
+%     enhanced,
+%     breakable,
+%     colback=darkshade,
+%     colframe=darkbar,
+%     coltext=darktext,
+%     boxrule=0pt,
+%     leftrule=2pt,
+%     toprule=0pt,
+%     rightrule=0pt,
+%     bottomrule=0pt,
+%     arc=0pt,
+%     left=12pt,
+%     right=12pt,
+%     top=8pt,
+%     bottom=8pt,
+%     parskip=0pt,
+% }
+
+% --- 代码块环境（tcolorbox + listings）---
+% 用法：\begin{codeblock}[language=Python] ... \end{codeblock}
+% 语法高亮颜色、代码字体由本文件中的 \lstset 统一控制
+\DeclareTCBListing{codeblock}{ !O{} }{%
+    enhanced,
+    listing only,              % 内容只按代码处理，避免被当作普通文字二次排版
+    breakable,
+    colback=codeshade,         % 背景色
+    colframe=codebar,          % 边框颜色
+    coltext=codetext,          % 文字颜色
+    boxrule=0pt,
+    leftrule=0pt,
+    toprule=0pt,
+    rightrule=0pt,
+    bottomrule=0pt,
+    arc=8pt,
+    left=12pt,
+    right=12pt,
+    top=12pt,
+    bottom=12pt,
+    listing options={#1},      % 把 [language=...] 等选项传给 lstlisting
+}
+
+% ==========================================
+% 二、图表标题（Caption）样式
+%    格式：Figure 1 | 标题文字（编号与文字整体加粗）
+%          表格标题在上方，图片标题在下方
+% ==========================================
+\DeclareCaptionLabelSeparator{vbar}{ | }           % 编号与标题间用竖线分隔
+\captionsetup{
+    labelsep=vbar,                                 % 使用竖线分隔符
+    font={small,bf},                               % 标题字号略小于正文，文字加粗
+    labelfont=bf,                                  % 编号部分（如“Figure 1 |”）同样加粗
+    singlelinecheck=false                          % 单行标题也保持格式一致
+}
+\captionsetup[table]{position=top}                 % 表格标题在上方
+\captionsetup[figure]{position=bottom}             % 图片标题在下方
+
+% ==========================================
+% 三、目录（Table of Contents）样式
+%    - Section 级别加粗、无引导点
+%    - Subsection 级别正常、有引导点
+% ==========================================
+\renewcommand{\cfttoctitlefont}{\huge\bfseries}   % "Contents" 标题
+\renewcommand{\contentsname}{Table of Contents}    % 目录标题文字
+\setlength{\cftbeforetoctitleskip}{0pt}            % 标题上方间距
+\setlength{\cftaftertoctitleskip}{4em}             % 标题下方间距
+
+% Section 行：加粗，无引导点（用空白填充），不显示页码
+\renewcommand{\cftsecfont}{\Large\bfseries}
+\renewcommand{\cftsecleader}{\hfill}
+% 隐藏 section 一级条目的页码（subsec 仍保留页码）
+\renewcommand{\cftsecfillnum}[1]{%
+    {\cftsecleader}\nobreak
+    \cftsecafterpnum\par
+}
+
+% Subsection 行：不加粗，有点状引导线
+\renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
+
+\setlength{\cftbeforesecskip}{2em}               % Section 条目间的垂直间距
+\setlength{\cftbeforesubsecskip}{1em}
+
+% ==========================================
+% 四、章节标题格式
+%    使用 titlesec 宏包定制 Section / Subsection / Subsubsection
+% ==========================================
+\titleformat{\section}{\huge}        % 一级标题
+            {\thesection}{1em}{}
+\titleformat{\subsection}{\Large}     % 二级标题
+            {\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\large} % 三级标题
+            {\thesubsubsection}{1em}{}
+
+% ==========================================
+% 五、首页标题页命令与排版
+%    - 页面垂直居中（上下留白接近），内容统一靠左排列
+%    - 自上而下依次为：logo → 标题（\Huge）→ 作者 → 联系方式
+%    - \reportlogo{...}        设置 Logo 图片路径
+%    - \reporttitle{...}       设置报告标题
+%    - \reportauthor{...}      设置作者
+%    - \reportaffiliation{...} 设置所属组织/大学（仅保留命令，首页不再显示）
+%    - \reportcontact{...}     设置联系方式（邮箱等）
+%    - \makereporttitle        输出标题页
+% ==========================================
+
+% --- 信息存储命令 ---
+\newcommand{\reportlogo}[1]{\def\@reportlogo{#1}}
+\newcommand{\reporttitle}[1]{\def\@reporttitle{#1}}
+\newcommand{\reportauthor}[1]{\def\@reportauthor{#1}}
+\newcommand{\reportaffiliation}[1]{\def\@reportaffiliation{#1}}
+\newcommand{\reportcontact}[1]{\def\@reportcontact{#1}}
+\newcommand{\reportabstract}[1]{\def\@reportabstract{#1}}   % 可选首页摘要
+
+% --- Logo 对齐方式切换（兼容保留）---
+%     新版首页统一靠左排版，Logo 始终靠左，
+%     此命令仅作向后兼容保留，不再影响输出。
+\newif\if@reportlogoleft
+\@reportlogoleftfalse
+\newcommand{\reportlogoleft}{\@reportlogolefttrue}
+
+% --- 正文注释命令：在任意位置使用，以数字编号的脚注形式出现 ---
+\newcommand{\reportnote}[1]{%
+    \footnote{#1}%
+}
+
+% --- 首页风格选择 ---
+%   type 1：logo/标题/作者靠左上移 + 可选摘要框
+%   type 2：logo 居左、标题/作者居中 + 可选摘要框
+\newcommand{\frontpagestyle}[1]{\def\@frontpagestyle{#1}}
+
+% --- 输出标题页（按所选风格加载 frontpage-<风格>.tex）---
+\newcommand{\makereporttitle}{%
+    \@ifundefined{@frontpagestyle}{\def\@frontpagestyle{t1}}{}%
+    \edef\@frontpage@file{frontpage-\@frontpagestyle}%
+    \makeatletter%                                                % 首页文件内含 @ 内部命令，需临时切换字母表
+    \expandafter\input\expandafter{\@frontpage@file}%
+    \makeatother%
+}
+
+% ==========================================
+% 六、摘要（Abstract）环境样式
+%    - 标题居中、大号加粗
+%    - 正文不缩进
+% ==========================================
+\renewenvironment{abstract}{
+    \begin{center}
+        {\Large\bfseries Abstract}
+    \end{center}
+    \vspace{0.5em}
+    \noindent\ignorespaces                          % 不缩进
+}{
+    \par\vspace{2em}
+}
+
+% ==========================================
+% 七、脚注分隔线样式
+%    - 设为黑色实线（默认可能受字体颜色影响）
+% ==========================================
+\renewcommand{\footnoterule}{%
+    \kern-3pt
+    {\color{black}\hrule width 2in height 0.4pt}%
+    \kern 2.6pt
+}
+
+% ==========================================
+% 八、参考文献（Bibliography）样式
+%    - 使用 biblatex + biber 引擎
+%    - 作者-年份引用格式
+%    - 去除斜体，统一使用直立字体
+% ==========================================
+\RequirePackage[
+    backend=bibtex,                                % 后端使用 bibtex
+    style=authoryear,                              % 引用格式：作者-年份
+    maxbibnames=99,                                % 显示所有作者姓名
+    dashed=false,                                  % 重复作者不用破折号代替
+    url=true,                                      % 显示 URL
+    doi=false,                                     % 不显示 DOI
+    eprint=false                                   % 不显示 eprint
+]{biblatex}
+
+% 以下字段改用直立字体（去除斜体）
+\DeclareFieldFormat{journaltitle}{#1}              % 期刊名
+\DeclareFieldFormat{booktitle}{#1}                 % 会议论文集名
+\DeclareFieldFormat{maintitle}{#1}                 % 主标题（如丛书名）
+\DeclareFieldFormat{title}{#1}                     % 文章标题
+\DeclareFieldFormat{issuedate}{#1}                 % 出版日期
+
+% URL 显示格式：去掉 \mkbibacro（小体大写），避免 "URL" 三字视觉偏小
+\DeclareFieldFormat{url}{URL\addcolon\space\url{#1}}
+
+% 参考文献列表间距
+\setlength{\bibitemsep}{1.2em}                     % 条目间垂直间距
+\setlength{\bibhang}{1.5em}                        % 悬挂缩进
+
+% ==========================================
+% 九、超链接样式
+%    - 内部链接（交叉引用、目录条目等）：无颜色、无下划线，仅保持可点击
+%    - 外部链接（网站、邮箱、参考文献中的 URL）：
+%      正文字体 + 颜色 #113BC1 + 下划线
+%    - 外部链接颜色统一由 linkcolor 控制，可在此修改
+%    - 保留 PDF 书签
+% ==========================================
+\definecolor{linkcolor}{HTML}{113BC1}              % 链接颜色（可在此修改）
+\RequirePackage{xurl}                              % URL 允许在任意字符处断行，避免超长链接溢出
+
+\hypersetup{
+    colorlinks=false,                              % 内部链接不自动着色，保持原格式
+    pdfborder={0 0 0},                             % 不使用边框
+    urlbordercolor=linkcolor,                      % 外部链接下划线颜色
+    bookmarksnumbered=true                         % PDF 书签带编号
+}
+\urlstyle{same}                                    % URL 使用正文字体，而非等宽字体
+
+% 外部链接（\href / \url，含参考文献中的 URL）统一加颜色 + 下划线。
+% 下划线通过 PDF 注解边框样式实现（不占用文字宽度，不影响换行），
+% 链接文字本身只着色，配合 xurl 可正常断行。
+% \href 与 \url 最终都会调用 \hyper@linkurl，在这里包装链接文字即可，
+% 内部链接（\ref、目录等）走的是另一条路径，不受影响。
+\let\old@hyper@linkurl\hyper@linkurl
+\def\hyper@linkurl#1#2{%
+    \begingroup
+    \def\@pdfborderstyle{/S/U/W 1}%                % 该注解带下划线（仅外部链接）
+    \old@hyper@linkurl{\color{linkcolor}#1}{#2}%
+    \endgroup
+}
+
+% ==========================================
+% 十、代码块（lstlisting）样式
+%    - 代码字体与链接字体分开控制：默认等宽字体 \ttfamily
+%      如需更换，可修改下面的 \codefont，或在 template.tex 中
+%      用 \setmonofont 指定具体字体
+%    - 无背景色，无外框
+%    - 关键字、注释、字符串分别着色
+% ==========================================
+\newcommand{\codefont}{\ttfamily}                 % 代码字体控制点
+
+\lstset{
+    basicstyle={\codefont\footnotesize},                  % 代码字体 + 小号
+    breaklines=true,                               % 长行自动换行
+    frame=none,                                    % 无外框
+    keywordstyle=\color{keywordcolor},                     % 关键字：蓝色
+    commentstyle=\color{commentcolor},                     % 注释：深绿色
+    stringstyle=\color{stringcolor}                        % 字符串：红色
+}

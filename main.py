@@ -2,6 +2,7 @@
     python main.py train --schedule linear --epochs 20     # 训练
     python main.py sample --ckpt checkpoints/unet_final.pt # 生成 8x8 网格
     python main.py sample --sample-steps 1000 100 50 --eta 0  # DDIM 少步采样对比
+    python main.py sample --digit all --guidance-w 2.0     # 指定数字采样（条件模型）
     python main.py check                                   # 自检
 """
 import argparse
@@ -21,6 +22,7 @@ def parse_args():
     train_parser.add_argument("--sample-every", type=int, default=0,
                               help="每多少个 epoch 采样监控一次（0=关闭）")
     train_parser.add_argument("--seed", type=int, default=None)
+    train_parser.add_argument("--out-ckpt", type=None, default="unet_final", help="输出最终 ckpt 文件名")
     train_parser.add_argument("--resume", nargs="?", const="./checkpoints/unet_latest.pt",
                               default=None, metavar="CKPT",
                               help="断点续训；不带路径时默认 checkpoints/unet_latest.pt")
@@ -33,6 +35,11 @@ def parse_args():
                                help="反向采样步数，可传多个做质量-耗时对比（默认走满训练时的 T）")
     sample_parser.add_argument("--eta", type=float, default=1.0,
                                help="DDIM 随机性：0=确定性（少步时质量更好），1=DDPM 后验")
+    sample_parser.add_argument("--digit", default=None,
+                               choices=["all"] + [str(i) for i in range(10)],
+                               help="指定生成的数字 0-9；all 表示 0-9 各 8 张拼网格（需条件模型）")
+    sample_parser.add_argument("--guidance-w", type=float, default=2.0, metavar="W",
+                               help="classifier-free guidance 强度（默认 2.0；1=普通条件采样，0=无条件）")
 
     subparsers.add_parser("check", help="自检：参数量/调度/形状/单batch过拟合")
     return parser.parse_args()
@@ -52,6 +59,8 @@ def build_config(args):
         config.sample_every = args.sample_every
         if args.seed is not None:
             config.seed = args.seed
+        if args.out_ckpt is not None:
+            config.out_ckpt = args.out_ckpt 
     return config
 
 
@@ -63,7 +72,7 @@ def main():
     elif args.command == "sample":
         from engine.sample import sample
         sample(build_config(args), args.ckpt, args.num_samples, args.out,
-               args.sample_steps, args.eta)
+               args.sample_steps, args.eta, args.digit, args.guidance_w)
     elif args.command == "check":
         from engine.check import run_check
         run_check(Config())
