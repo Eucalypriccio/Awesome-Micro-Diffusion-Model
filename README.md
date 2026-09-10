@@ -13,11 +13,11 @@ python main.py train --schedule linear --epochs 20     # 训练（线性调度�
 python main.py train --schedule cosine --epochs 20     # 训练（余弦调度，本报告结果所用）
 python main.py train --resume --epochs 20              # 断点续训（默认接 checkpoints\unet_latest.pt，--epochs 延长目标轮数）
 
-python main.py sample --ckpt checkpoints\unet_final_0909.pt
+python main.py sample --ckpt checkpoints\unet_final.pt
 # 基础采样：64 张 8x8 网格（默认 1000 步 ancestral、EMA 权重）
 
-python main.py sample --ckpt checkpoints\unet_final_0909.pt --sample-steps 1000 200 100 50 20 --eta 1
-python main.py sample --ckpt checkpoints\unet_final_0909.pt --sample-steps 1000 200 100 50 20 --eta 0
+python main.py sample --ckpt checkpoints\unet_final.pt --sample-steps 1000 200 100 50 20 --eta 1
+python main.py sample --ckpt checkpoints\unet_final.pt --sample-steps 1000 200 100 50 20 --eta 0
 # 扩展一：不同采样步数对比（相同初始噪声，逐一出图并打印耗时汇总）
 
 python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit all --guidance-w 2.0
@@ -30,34 +30,7 @@ python main.py sample --ckpt checkpoints\unet_final_0909.pt --digit 8 --guidance
 python benchmark.py                                    # 性能基准（FLOPs/耗时分析）
 ```
 
-注：`unet_final_0909.pt` 为条件模型（支持 `--digit`）；`unet_final.pt` 为更早的无条件模型存档，仅作对照。
-
-## 实验
-- 前向加噪：噪声调度，一步到位的闭式加噪
-- 去噪网络：构建 U-Net（参数量 $\leq 5\text{M}$），以 MSE 预测噪声并训练
-- 反向采样：实现 ancestral sampling，从纯噪声逐步去噪
-- 输出：推理时从标准正态分布随机采样 8x8 张纯噪声图，输出得到 8x8 样本网格
-- 数据集 MNIST `torchvision.datasets.MNIST()`
-	- 训练集 60,000 张
-	- 测试集 10,000 张
-	- 每张图片大小 28x28x1
-- 支持 CPU/GPU（`torch.cuda.is_available()` 自动检测）
-- 支持线性调度和余弦调度
-- 扩展内容
-	- 不同采样步数对生成质量与耗时的影响（已实现：DDIM 子序列采样，见"少步采样与 DDIM"一节；`python main.py sample --sample-steps 1000 200 50 20 --eta 0`）
-	- 完成指定数字采样（即支持文字 embedding），比如在终端输入数字 0-9，生成对应的图像（已实现：条件扩散 + classifier-free guidance，见"指定数字生成"一节；`python main.py sample --digit all --guidance-w 2.0`）
-
-要求：
-- 控制模型大小，CPU 训练小时不超过 2h
-- 配置好训练规范，几个 epoch，什么优化器，训练情况打印
-- 代码规范
-	- 使用原生 PyTorch, numpy, sklearn, transformers 等库实现，不借助其他高级库
-	- 做好 Python 环境管理，`.venv, requirements.txt`
-	- 变量名要清晰易懂无歧义
-	- 使用最基础、直观的语法
-	- 将数据集准备、模型架构、训练、测试以及其他辅助性代码分开管理，一份代码只关注一类功能
-	- 可复用的模块、函数直接封装，不要重复完整实现
-	- 代码关键部分写上简洁、易懂的注释
+注：`unet_final_0909.pt` 为条件模型（支持 `--digit`）；`unet_final.pt` 为更早的无条件模型。
 
 ## 原理
 

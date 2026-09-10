@@ -76,9 +76,13 @@ class GaussianDiffusion(nn.Module):
             pred_noise = eps_uncond + guidance_w * (eps_cond - eps_uncond)
         # 由预测噪声反解 x0：x0 = (x_t - sqrt(1-alpha_bar_t) * eps) / sqrt(alpha_bar_t)
         pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * pred_noise) / torch.sqrt(alpha_bar_t)
-        # 截断到数据范围 [-1,1]：高噪声区 sqrt(alpha_bar_t) 极小，除法会把预测偏差放大
-        # 数百倍（实测 eta=0 首步 x0_pred 达 800+ 导致轨迹发散），截断是 DDIM 的标准细节
-        pred_x0 = pred_x0.clamp(-1, 1)
+        # 仅 eta < 1 时截断到数据范围 [-1,1]：
+        # - eta<1（确定性/半确定性）无噪声掩护，高噪声区除以极小的 sqrt(ᾱ_t) 会把预测偏差
+        #   放大数百倍导致轨迹发散（实测 eta=0 首步 x0_pred 达 800+），截断是必需的；
+        # - eta=1（ancestral）注入的噪声本就能冲掉发敞，截断反而会把边界像素提前钉死在 ±1，
+        #   在低噪声区冻结成孤立噪点（同权重同种子对照：孤立亮点 13 vs 1）。
+        if eta < 1.0:
+            pred_x0 = pred_x0.clamp(-1, 1)
 
         sigma = eta * torch.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar_t)) \
             * torch.sqrt(1 - alpha_bar_t / alpha_bar_prev)

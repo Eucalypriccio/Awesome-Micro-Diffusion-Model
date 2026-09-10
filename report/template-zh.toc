@@ -16,4 +16,4 @@
 \contentsline {subsection}{\numberline {4.1}训练耗时约为预期的 6 倍：参数量估算代替不了算力估算}{9}{subsection.4.1}%
 \contentsline {subsection}{\numberline {4.2}精简模型样本质量不足：质量与预算的再平衡}{9}{subsection.4.2}%
 \contentsline {subsection}{\numberline {4.3}$\miteta =0$ 采样全面失效：余弦调度末端的首步发散}{10}{subsection.4.3}%
-\contentsline {section}{References}{12}{table.caption.10}%
+\contentsline {section}{References}{13}{table.caption.10}%
